@@ -15,7 +15,33 @@ import pandas as pd
 #
 # get_filt_params(sig[0].stats.processing[2])
 
+def read_pyrocko(path):
 
+    pyrocko_map ={"^":("P", "Pg", "u", "i"), "v":("P", "Pg", "d", "i"),
+              "P":("P", "Pg", None, "e"), "S":("S", "Sg", None, "e")}
+
+    with open(path, 'rt') as f:
+    # open file and store in memory as whole list. Files typically
+    # aren't too large to read in at once without buffering.
+        f = f.readlines()[1:]
+    # Loop through the list and extract / unpack the metadata
+
+    stations={}
+    for line in f:
+        l = line.split() # split between whitespace
+        tid = l[4].replace("..", ".--.").split(".") #ensure locs are the same
+        net = tid[0]; name = tid[1];
+        time = "T".join(l[1:3])
+        des, pt, fm, po = pyrocko_map[l[8]]
+        weight = int(l[3])
+        ID = ".".join((net, name))
+        if weight <= 3:
+            try:
+                stations[ID].update({des:obspy.UTCDateTime(time)})
+            except KeyError:
+                stations.update({ID:{des:obspy.UTCDateTime(time)}})
+
+    return stations
 
 def plot_traces(st, plot_theoreticals=False, plot_windows=False, conv=1e-9,
                     bft=1, aftt=60, sig=None, noise=None, save=None):
@@ -50,16 +76,20 @@ def plot_traces(st, plot_theoreticals=False, plot_windows=False, conv=1e-9,
 
         if plot_theoreticals:
 
-            if not plot_windows:
-                # we should trim it down to some time before and after the p arrival (assuming we trust it)
-                tr.trim(tr.stats['p_time']-bft, tr.stats['p_time']+aftt)
+            try:
 
-            p = num2date(tr.stats['p_time'].matplotlib_date)
-            s = num2date(tr.stats['s_time'].matplotlib_date)
-            ax[i].vlines(p, tr.data.min()*conv/1.5, tr.data.max()*conv/1.5,
-                linestyles='dashed', color='blue', label='Pg')
-            ax[i].vlines(s, tr.data.min()*conv/1.5, tr.data.max()*conv/1.5,
-                linestyles='dashed', color='red', label='Sg')
+                if not plot_windows:
+                    # we should trim it down to some time before and after the p arrival (assuming we trust it)
+                    tr.trim(tr.stats['p_time']-bft, tr.stats['p_time']+aftt)
+
+                p = num2date(tr.stats['p_time'].matplotlib_date)
+                s = num2date(tr.stats['s_time'].matplotlib_date)
+                ax[i].vlines(p, tr.data.min()*conv/1.5, tr.data.max()*conv/1.5,
+                    linestyles='dashed', color='blue', label='Pg')
+                ax[i].vlines(s, tr.data.min()*conv/1.5, tr.data.max()*conv/1.5,
+                    linestyles='dashed', color='red', label='Sg')
+            except KeyError:
+                pass
 
         time = num2date(np.array([
             (tr.stats.starttime+(tr.stats.delta*(

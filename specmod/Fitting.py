@@ -182,6 +182,9 @@ class FitSpectra(object):
             self.init_fitting(model, guess)
 
 
+    def __len__(self):
+        return len(self.models)
+
     def set_spectra(self, spectra):
         if self.__check_spectra(spectra):
             self.spectra = spectra
@@ -244,17 +247,16 @@ class FitSpectra(object):
                 print('WARNING: {} not in available channels.'.format(
                     name.upper()))
 
-    def quick_vis(self, *args, **kwargs):
-
-        fig, axes = plt.subplots(*args, **kwargs)
+    def quick_vis(self):
+        l = self.__len__()
+        l = int((l/2 + (l%2)/2)/2)
+        fig, axes = plt.subplots(l, l, figsize=(14,12))
         axes=axes.flatten()
         for ax, mod in zip(axes, self.models.values()):
             if mod.result is None or not mod.pass_fitting:
                 ax.set_title("Fitting Failed for {}".format(mod.sig.id))
             else:
                 ax = mod.quick_vis(ax)
-
-
 
 
     @staticmethod

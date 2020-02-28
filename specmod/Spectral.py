@@ -442,7 +442,9 @@ class Spectra(object):
         return list(self.group.keys())
 
     def quick_vis(self, save=None, ret=True):
-        fig, axes = plt.subplots(2, 2, figsize=(13,12))
+        l = self.__len__()
+        l = int((l/2 + (l%2)/2)/2)
+        fig, axes = plt.subplots(l,l, figsize=(13,12))
         axes = axes.flatten()
         for g, ax in zip(self.group.values(), axes):
             g.quick_vis(ax)

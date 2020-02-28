@@ -3,16 +3,16 @@ import glob
 import obspy
 import matplotlib.pyplot as plt
 import numpy as np
+import specmod.utils as ut
 
 
-STREAM_DISTANCE_METHODS = ["mseed", "sac", "none"]
+STREAM_DISTANCE_METHODS = ["mseed", "sac", "list"]
 
-def set_origin(st, ot):
-    for tr in st:
-        tr.stats['otime'] = ot
+def set_origin_time(tr, ot):
+    tr.stats['otime'] = ot
 
 
-def set_stream_distance(st, olat, olon, odep, stlats=None, stlons=None, stelvs=None, inventory=None, dtype="sac"):
+def set_stream_distance(st, olat, olon, odep, ot, stlats=None, stlons=None, stelvs=None, inventory=None, dtype="sac"):
 
     """
     This assumes the sac files already have the station lat and long (degrees)
@@ -27,6 +27,7 @@ def set_stream_distance(st, olat, olon, odep, stlats=None, stlons=None, stelvs=N
             tr.stats['dep'] = odep
             tr.stats['olon'] = olon
             tr.stats['olat'] = olat
+            set_origin_time(tr, ot)
             if dtype.lower() == "sac":
                 tr.stats['repi'] = obspy.geodetics.gps2dist_azimuth(tr.stats.sac.stla, tr.stats.sac.stlo, olat, olon)[0]/1000
                 tr.stats['rhyp'] = np.sqrt((odep+(tr.stats.sac.stel/1000))**2+tr.stats['repi']**2)
@@ -34,7 +35,7 @@ def set_stream_distance(st, olat, olon, odep, stlats=None, stlons=None, stelvs=N
                 tr.stats['slat'] = tr.stats.sac.stla
                 tr.stats['selv'] = tr.stats.sac.stel
             elif dtype.lower() == "mseed":
-                stlat, stlon, stelv = get_station_coords_from_inventory(tr, inv)
+                stlat, stlon, stelv = get_station_loc_from_inventory(tr, inventory)
                 tr.stats['slon'] = stlon
                 tr.stats['slat'] = stlat
                 tr.stats['selv'] = stelv
@@ -53,9 +54,25 @@ def set_stream_distance(st, olat, olon, odep, stlats=None, stlons=None, stelvs=N
                 print("invalid method choice")
 
 
-def get_station_coords_from_inventory(tr, inv):
-    pass
-    return slat, slon, selev
+def get_station_loc_from_inventory(tr, inv):
+    meta = inv.get_channel_metadata(tr.id)
+    return meta['latitude'], meta['longitude'], meta['elevation']
+
+
+def set_picks_from_pyrocko(st, pyrock_file, emergency_ratio=1.7):
+    picks = ut.read_pyrocko(pyrock_file)
+    for tr in st:
+        id = ".".join([tr.stats.network, tr.stats.station])
+        try:
+            tr.stats['p_time'] = picks[id]['P']
+        except KeyError:
+            continue
+        try:
+            tr.stats['s_time'] = picks[id]['S']
+        except KeyError:
+            sdiff = (tr.stats['p_time'] - tr.stats['otime'])*emergency_ratio
+            tr.stats['s_time'] = tr.stats['p_time'] + sdiff
+
 
 def basic_set_theoreticals(st, otime, p=5.9, s=2.9, dmetric='repi'):
     """
