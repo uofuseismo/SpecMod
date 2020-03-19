@@ -11,7 +11,7 @@ Crucial dependencies:
     1. ObsPy v1.1.0 - for processing time series data
     2. mtspec v0.3.2 - for calculating spectra
     3. lmfit v1.0.0 - for modeling spectra
-    4. uncertainties v3.1.2 - for calculating the model uncertainties
+    4. numdifftools v0.9.39  - for calculating the model uncertainties
     5. (optional) emcee v3.0.1 - for Markov-Chain Monte Carlo search
     6. sub-dependencies of all above
 
