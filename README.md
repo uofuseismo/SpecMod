@@ -1,5 +1,10 @@
 ## SpecMod - A Toolbox for Processing and Modeling Seismic Spectra
 
+SpecMod was designed following closely the method of spectral modeling described in Edwards et al. (2010).
+
+Benjamin Edwards, Bettina Allmann, Donat Fäh, John Clinton, Automatic computation of moment magnitudes for small earthquakes and the scaling of local to moment magnitude, Geophysical Journal International, Volume 183, Issue 1, October 2010, Pages 407–420, https://doi.org/10.1111/j.1365-246X.2010.04743.x
+
+
 SpecMod is very much still in development and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing seismic spectra.
 
 ## Usage Instructions
