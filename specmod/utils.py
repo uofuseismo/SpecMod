@@ -9,7 +9,6 @@ from matplotlib.dates import num2date
 import numpy as np
 import pandas as pd
 
-
 # def get_filt_params(x):
 #     return x.split("options=")[-1].split("::")[0].strip("{").strip("}")
 #
@@ -57,9 +56,11 @@ def plot_traces(st, plot_theoreticals=False, plot_windows=False, conv=1e-9,
         sig = stream_distance_sort(sig)
         noise = stream_distance_sort(noise)
 
-    fig, ax = plt.subplots(len(stc), 1, sharex=True, sharey=sharey, figsize=(8, 14))
-    ax = ax.flatten()
-
+    fig, ax = plt.subplots(len(stc), 1, sharex=True, sharey=sharey, figsize=(14,len(stc)*3))
+    if len(stc) > 1:
+        ax = ax.flatten()
+    else:
+        ax=[ax]
     for i, tr in enumerate(stc):
 
         if plot_windows:
@@ -118,7 +119,7 @@ def stream_distance_sort(st, dist_met='repi'):
     except KeyError:
         print('WARNING: No distance info, stream not sorted by distance.')
 
-    return st
+    return st.copy()
 
 
 def cps(st):
@@ -220,3 +221,68 @@ def keith2utc(row):
 
 def path_to_utc(p):
     return obspy.UTCDateTime(*list(map(int, p.split(".")[1:])))
+
+
+
+def find_rotation_angle(arr_from_x, arr_from_y, arr_to, cond=-1, inc=0.01, backwards=False):
+
+    """
+    Find the rotation angle required to raise one amplitude on a given array to the same
+    amplitude on a target array. This angle may be used to rotate the entire array.
+    The code increases (or decreases if backwards) the angle iteratively until the amplitude is
+    higer than or equal to the target amplitude.
+    """
+
+    max_its=1000; its=0
+    th=0;
+    tmp_from = arr_from_y[cond]
+
+    # They might already meet at one end, don't have to rotate.
+    if 10**tmp_from >= 10**arr_to[cond]:
+        print('already same level')
+        return 0
+
+    while 10**tmp_from <= 10**arr_to[cond]:
+        tmp_from = arr_from_x[cond] * np.sin(th) + arr_from_y[cond] * np.cos(th) + arr_from_y[0]*th
+        if backwards:
+            th-=inc
+        else:
+            th+=inc
+        its+=1
+        if its > max_its:
+            print("Didn't ever meet.")
+            return 0
+    if backwards:
+        th += inc
+    else:
+        th -= inc
+    return th
+
+def rotate(x, y, theta):
+    """
+    Rotate an array through a given angle (in radians).
+    """
+    if theta == 0:
+        return y
+    else:
+        return x * np.sin(theta) + y * np.cos(theta) + y[0]*theta
+
+def rotate_noise_full(xn, yn, ys, bcond=0, fcond=-1, inc=0.05, ret_angle=False, th1=None, th2=None):
+    """
+    Performs a forward and backward rotation to match low and high frequencies.
+    The output array is the input rotated forward and backwards and added
+    together.
+    """
+
+    xn = np.log10(xn); yn=np.log10(yn); ys=np.log10(ys)
+    if th1 is None and th2 is None:
+        th1=find_rotation_angle(xn, yn, ys, cond=bcond, backwards=True, inc=inc)
+        th2=find_rotation_angle(xn, yn, ys, cond=fcond, inc=inc)
+    #print(th1, th2)
+    yr1 = rotate(xn, yn, th1)
+    yr2 = rotate(xn, yn, th2)
+
+    if ret_angle:
+        return 10**yr2+10**yr1, th1, th2
+    else:
+        return 10**yr2+10**yr1

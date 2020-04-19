@@ -2,29 +2,15 @@ import os
 import numpy as np
 import lmfit as lm
 import pandas as pd
-import specmod.Spectral as sp
+from . import Spectral as sp
 import matplotlib.pyplot as plt
 from copy import deepcopy
 from collections import defaultdict
 from matplotlib.ticker import StrMethodFormatter, NullFormatter
+from . import config as cfg
 
-# import specmod.Models as md
-
-
-
-# abrune = Model(simple_model)
-# params = abrune.make_params(llpsp=-10, fc=3, ts=0.01)
-# params['fc'].vary = True
-# result = abrune.fit(np.log10(amp), params, f=f, method='tnc', weights=(1/f)/(1/f).max())
-#
-# plt.semilogx(f, np.log10(amp), '.', color='grey', mfc='none')
-# plt.semilogx(f, result.init_fit, 'k', label='inital')
-# plt.semilogx(f, result.best_fit, 'r--', label='final')
-#
-# result
-# help(params)
-# dir(params['llpsp'])
-
+# global variables
+PLOT_COLUMNS = cfg.FITTING["PLOT_COLUMNS"]
 
 class FitSpectrum(object):
 
@@ -40,9 +26,11 @@ class FitSpectrum(object):
     mod_freq = np.array([])
     mod_amp = np.array([])
     pass_fitting=True
+    fit_bins=False
     meta = {}
 
-    def __init__(self, signal, model, **params):
+    def __init__(self, signal, model, fit_bins=False, **params):
+        self.fit_bins=fit_bins
         self.set_signal(signal)
         self.set_model(model, **params)
 
@@ -99,21 +87,34 @@ class FitSpectrum(object):
         """
         Only fit between signal limits if they are specified.
         """
-        if self.sig.ubfreqs.size > 0:
-            inds = np.where((self.sig.freq>=self.sig.ubfreqs[0]) & (
-                 self.sig.freq<=self.sig.ubfreqs[1]))
-            self.mod_freq = self.sig.freq[inds]
-            self.mod_amp = self.sig.amp[inds]
+
+        if self.fit_bins:
+            freq = self.sig.bfreq
+            amp = self.sig.bamp
         else:
-            self.mod_freq = self.sig.freq
-            self.mod_amp = self.sig.amp
+            freq = self.sig.freq
+            amp = self.sig.amp
+
+        if self.sig.ubfreqs.size > 0:
+            inds = np.where((freq>=self.sig.ubfreqs[0]) & (
+                 freq<=self.sig.ubfreqs[1]))
+            self.mod_freq = freq[inds]
+            self.mod_amp = amp[inds]
+        else:
+            self.mod_freq = freq
+            self.mod_amp = amp
+
         self.mod_amp = np.log10(self.mod_amp)
 
 
     def __param_string(self):
-        pars = [[k.name, k.value, 2*k.stderr] for k in self.result.params.values()]
-        return ", ".join(['{}: {:.3f}+/-{:.3f}' for _ in pars]).format(
-            *[val for sublist in pars for val in sublist])
+        try:
+            pars = [[k.name, k.value, 2*k.stderr] for k in self.result.params.values()]
+            return ", ".join(['{}: {:.3f}+/-{:.3f}' for _ in pars]).format(
+                *[val for sublist in pars for val in sublist])
+        except Exception as msg:
+            print(msg)
+            return "NaN"
 
     def quick_vis(self, ax=None):
         import matplotlib.pyplot as plt
@@ -136,7 +137,7 @@ class FitSpectrum(object):
         p={}
         for k in self.result.params.values():
             p.update({k.name: k.value})
-            p.update({k.name+"-std":k.stderr})
+            p.update({k.name+"-stderr":k.stderr})
         return p
 
     def __get_fit_stats(self):
@@ -176,10 +177,10 @@ class FitSpectra(object):
     guess = {}
     table = pd.DataFrame([])
 
-    def __init__(self, spectra, model, guess=None):
+    def __init__(self, spectra, model, guess=None, fit_bins=False):
         self.set_spectra(spectra)
         if guess is not None:
-            self.init_fitting(model, guess)
+            self.init_fitting(model, guess, fit_bins)
 
 
     def __len__(self):
@@ -215,11 +216,11 @@ class FitSpectra(object):
         self.__generate_group_fit_table()
 
 
-    def init_fitting(self, model, guess):
+    def init_fitting(self, model, guess, fit_bins):
         tmp = {}
         for id, spec in self.spectra.group.items():
             if spec.signal.pass_snr:
-                fit = FitSpectrum(spec.signal, model, **guess[id])
+                fit = FitSpectrum(spec.signal, model, **guess[id], fit_bins=fit_bins)
                 tmp.update({id: fit})
         self.models = tmp
 
@@ -248,10 +249,9 @@ class FitSpectra(object):
                     name.upper()))
 
     def quick_vis(self):
-        l = self.__len__()
-        l = int((l/2 + (l%2)/2)/2)
-        fig, axes = plt.subplots(l, l, figsize=(14,12))
-        axes=axes.flatten()
+        l = self.__num_rows()
+        fig, axes = plt.subplots(l, PLOT_COLUMNS, figsize=(17, int(l*5)))
+        axes = axes.flatten()
         for ax, mod in zip(axes, self.models.values()):
             if mod.result is None or not mod.pass_fitting:
                 ax.set_title("Fitting Failed for {}".format(mod.sig.id))
@@ -262,13 +262,20 @@ class FitSpectra(object):
     @staticmethod
     def create_simple_guess(spectra):
         guess = {}
-        for id, spec in spectra.group.items():
-            inds = np.where((spec.signal.freq>=spec.signal.ubfreqs[0]) & (
-                 spec.signal.freq<=spec.signal.ubfreqs[1]))
-            llpsp = np.log10(spec.signal.amp[inds].max())
-            fc = spec.signal.freq[inds][spec.signal.amp[inds].argmax()]
-            guess.update({ id : {'llpsp':llpsp, 'fc': fc, 'ts': 0.01}})
+        for ID, spec in spectra.group.items():
+            try:
+                inds = np.where((spec.signal.freq>=spec.signal.ubfreqs[0]) & (
+                     spec.signal.freq<=spec.signal.ubfreqs[1]))
+                # print(ID, inds)
+                llpsp = np.log10(spec.signal.amp[inds].max())
+                fc = spec.signal.freq[inds][spec.signal.amp[inds].argmax()]
+                guess.update({ ID : {'llpsp':llpsp, 'fc': fc, 'ts': 0.01}})
+
+            except IndexError:
+                guess.update({ID: {'llpsp':None, 'fc': None, 'ts': None}})
+
         return guess
+
 
     @staticmethod
     def write_flatfile(path, fits):
@@ -308,3 +315,11 @@ class FitSpectra(object):
                 "Must be a signal object not {}".format(type(signal)))
         else:
             return True
+
+    def __num_rows(self):
+        l = self.__len__()
+        cols = PLOT_COLUMNS
+        if l % cols > 0:
+            return int((cols * (int(l/cols)+1)) / cols)
+        else:
+            return int(l/cols)

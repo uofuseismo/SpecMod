@@ -1,10 +1,19 @@
+# MODELS contains a set of functions for minimisation to seismic spectra.
+# It can be modified as appropriate.
 import numpy as np
+from . import config as cfg
 
-BRUNE_MODEL = (1, 2)
-BOATRIGHT_MODEL = (2, 2)
+MODS = ["BRUNE", "BOATWRIGHT"]
 
-MODEL = BRUNE_MODEL
-motion='velocity'
+# UTIL FUNCS
+def which_model(mod):
+    if mod in MODS:
+        if mod == "BRUNE":
+            return BRUNE_MODEL
+        if mod == "BOATWRIGHT":
+            return BOATWRIGHT_MODEL
+    else:
+        raise ValueError(f"Model {mod} not available. Choose from {MODS}.")
 
 
 def scale_to_motion(motion, f):
@@ -19,26 +28,30 @@ def scale_to_motion(motion, f):
     else:
         return None
 
+# DEFAULT PARAMS FOR SOURCE MODE:
+BRUNE_MODEL = (1, 2) # omega squared
+BOATWRIGHT_MODEL = (2, 2) # omega cubed
+#
+MODEL = which_model(cfg.MODELS["MODEL"])
+MOTION = cfg.MODELS["MOTION"]
 
+
+
+# MINIMISATION FUNCTIONS
+## Source model
 def source(f, llpsp, fc):
     gam, n = MODEL
     loga = llpsp - (1/gam)*np.log10((1+(f/fc)**(gam*n)))
     return loga
 
+# t-star attenuation model
 def atten(f, ts):
     return -(np.pi*f*ts / np.log(10))
 
+# combine models
 def simple_model(f, llpsp, fc, ts):
-    global motion
+    global MOTION
     """
     Simple attenuated source model to minimise.
     """
-    return source(f, llpsp, fc) + atten(f, ts) + scale_to_motion(motion, f)
-
-
-
-
-# import matplotlib.pyplot as plt
-# f = np.arange(0.01, 100, 0.01)
-# a = source(1, 1, f) + np.log10(scale_to_motion('displacement', f))
-# plt.semilogx(f, a)
+    return source(f, llpsp, fc) + atten(f, ts) + scale_to_motion(MOTION, f)

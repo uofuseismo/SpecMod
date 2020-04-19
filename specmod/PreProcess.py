@@ -3,7 +3,7 @@ import glob
 import obspy
 import matplotlib.pyplot as plt
 import numpy as np
-import specmod.utils as ut
+from . import utils as ut
 
 
 STREAM_DISTANCE_METHODS = ["mseed", "sac", "list"]
@@ -39,7 +39,10 @@ def set_stream_distance(st, olat, olon, odep, ot, stlats=None, stlons=None, stel
                 tr.stats['slon'] = stlon
                 tr.stats['slat'] = stlat
                 tr.stats['selv'] = stelv
-                tr.stats['repi'] = obspy.geodetics.gps2dist_azimuth(stlat, stlon, olat, olon)[0]/1000
+                r, a, ba = obspy.geodetics.gps2dist_azimuth(olat, olon, stlat, stlon)
+                tr.stats['back_azimuth'] = ba
+                tr.stats['azimuth'] = a
+                tr.stats['repi'] = r/1000
                 tr.stats['rhyp'] = np.sqrt((odep+(stelv/1000))**2+tr.stats['repi']**2)
 
             elif dtype.lower() == "none":
@@ -135,6 +138,22 @@ def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
         link_window_to_trace(tr, p_start, p_end)
         tr.trim(p_start, p_end)
 
+def cut_s(st, bf=2, raf=0.8, tafp=20, sta_shift=dict()):
+    """
+    Function to cut a p wave window from an Obspy trace obeject
+    """
+    stas=0
+
+    for tr in st:
+
+        stas = get_sta_shift(tr.stats.station, sta_shift)
+        relps = tr.stats['s_time'] - tr.stats['p_time']
+        p_end = tr.stats['p_time'] + relps*raf + stas
+        s_end = p_end + tafp
+
+        link_window_to_trace(tr, p_end, s_end)
+        tr.trim(p_end, s_end)
+
 def get_signal(st, func, **kwargs):
     stc = st.copy()
     func(stc, **kwargs)
@@ -144,6 +163,15 @@ def get_noise_p(st, sig, bf=1, bshift=0.2):
     stc=st.copy()
     for tr, trs in zip(stc, sig):
         end = trs.stats['wstart']-bshift
+        start = end - bf
+        link_window_to_trace(tr, start, end)
+        tr.trim(start, end)
+    return stc
+
+def get_noise_s(st, bf=1, bshift=0.2):
+    stc=st.copy()
+    for tr in stc:
+        end = tr.stats['p_time']-bshift
         start = end - bf
         link_window_to_trace(tr, start, end)
         tr.trim(start, end)

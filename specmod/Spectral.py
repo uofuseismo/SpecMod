@@ -6,13 +6,32 @@ import scipy.integrate as ig
 import matplotlib.pyplot as plt
 from matplotlib.ticker import StrMethodFormatter, NullFormatter
 from mtspec import mtspec
+from . import utils as ut
+from . import config as cfg
 
+# DEFAULT PARAMS
 
 SUPPORTED_SAVE_METHODS = ['pickle']
+MIN_MAX_FREQ_PCT = [10, 20]
 
+BW_METHOD=cfg.SPECTRAL["BW_METHOD"]
+PLOT_COLUMNS = cfg.SPECTRAL["PLOT_COLUMNS"]
+BINNING_PARAMS = dict(smin=cfg.SPECTRAL["BIN_PARS"][0],
+    smax=cfg.SPECTRAL["BIN_PARS"][1],
+    bins=cfg.SPECTRAL["BIN_PARS"][2])
+BIN = True
+
+ROTATE_NOISE = cfg.SPECTRAL["ROTATE"]
+
+ROT_PARS = dict(bcond=cfg.SPECTRAL["ROT_PARS"][0],
+    fcond=cfg.SPECTRAL["ROT_PARS"][1],
+    inc=cfg.SPECTRAL["ROT_PARS"][2])
+
+SNR_TOLERENCE = cfg.SPECTRAL["SNR_TOLERENCE"]
+MIN_POINTS = cfg.SPECTRAL["MIN_POINTS"]
+SBANDS = cfg.SPECTRAL["S_BANDS"]
 
 # classes
-
 class Spectrum(object):
     """
     Spectrum class.
@@ -26,12 +45,17 @@ class Spectrum(object):
     event = " "
     freq_lims = np.array([0.,0.])
     __tr=obspy.Trace(np.array([]))
+    bamp=np.array([])
+    bfreq=np.array([])
 
     def __init__(self, kind, tr=None, **kwargs):
         # if a trace is passed assume it needs to be converted to frequency.
         if tr is not None:
             self.__set_metadata_from_trace(tr, kind)
             self.__calc_spectra(**kwargs)
+            self.psd_to_amp()
+            self.__bin_spectrum()
+
 
 
     def psd_to_amp(self):
@@ -40,8 +64,19 @@ class Spectrum(object):
         amp = [PSD*fs*len(PSD)]^0.5
         fs is sampling rate in Hz
         """
+
+        # self.amp = np.sqrt(
+        #     self.amp*self.meta['delta']*len(self.amp))
+        # if self.bamp.size > 0:
+        #     self.bamp = np.sqrt(
+        #         self.bamp*self.meta['delta']*len(self.amp))
+
         self.amp = np.sqrt(
-            self.amp*self.meta['sampling_rate']*len(self.amp))
+            (self.amp*len(self.freq))/self.meta['sampling_rate'])
+        if self.bamp.size > 0:
+            self.bamp = np.sqrt(
+                (self.bamp*len(self.freq))/self.meta['sampling_rate'])
+
 
     def amp_to_psd(self):
         """
@@ -51,6 +86,9 @@ class Spectrum(object):
         """
         self.amp = np.power(self.amp, 2) / (
             self.meta['sampling_rate'] * len(self.amp))
+        if self.bamp.size > 0:
+            self.bamp = np.power(self.bamp, 2) / (
+                self.meta['sampling_rate'] * len(self.bamp))
 
     def quick_vis(self, **kwargs):
         fig, ax = plt.subplots(1,1)
@@ -62,9 +100,11 @@ class Spectrum(object):
 
     def integrate(self):
         self.amp /= (2*np.pi*self.freq)
+        self.bamp /= (2*np.pi*self.bfreq)
 
     def differentiate(self):
         self.amp *= (2*np.pi*self.freq)
+        self.bamp *= (2*np.pi*self.bfreq)
 
     def __set_metadata_from_trace(self, tr, kind):
         self.__tr = tr.copy() # make a copy so you dont delete original
@@ -92,6 +132,27 @@ class Spectrum(object):
                 else:
                     nm.update({k:v})
         return nm
+
+    @staticmethod
+    def bin_spectrum(freq, amp, smin=0.001, smax=200, bins=51):
+        # define the range of bins to use to average amplitudes and smooth spectrum
+        space = np.logspace(np.log10(smin), np.log10(smax), bins)
+        # initialise numpy arrays
+        bamps = np.zeros(int(len(space)-1)); bfreqs = np.zeros(int(len(space)-1));
+        # iterate through bins to find mean log-amplitude and bin center (log space)
+        for i, bbb in enumerate(zip(space[:-1], space[1:])):
+            bb, bf = bbb
+            a = 10**np.log10(amp[(freq>=bb)&(freq<=bf)]).mean()
+            bamps[i] = a;
+            bfreqs[i] = 10**(np.mean([np.log10(bb), np.log10(bf)]))
+
+        # remove nan values
+        bfreqs = bfreqs[np.logical_not(np.isnan(bamps))]; bamps = bamps[np.logical_not(np.isnan(bamps))]
+        return bfreqs, bamps
+
+    def __bin_spectrum(self):
+        self.bfreq, self.bamp = Spectrum.bin_spectrum(self.freq, self.amp,
+                                                        **BINNING_PARAMS)
 
 
 
@@ -142,15 +203,14 @@ class SNP(object):
     """
     Lower level container class to associate signal and noise spectrum objects.
     """
-    SNR_TOLERENCE = 3
-    MIN_POINTS = 5
-    SBANDS = [(2.0, 4.0), (4.0, 8.0), (8.0, 12.0)]
+
     signal = None
     noise = None
     bsnr = np.array([0.])
     event = " "
     ubfreqs = np.array([])
     itrpn = True
+    ROTATED = False
 
     def __init__(self, signal, noise, interpolate_noise=True, shearer_test=True):
         self.__check_ids(signal, noise)
@@ -185,8 +245,40 @@ class SNP(object):
         for s in self.pair:
             s.amp_to_psd()
 
+
+    @property
+    def bsnr(self):
+        return self._bsnr
+
+    @bsnr.setter
+    def bsnr(self, arr):
+        # assert type(arr) is type(np.array())
+        self._bsnr = arr
+
+
+    def __rotate_noise(self):
+        self.noise.bamp, th1, th2 = ut.rotate_noise_full(
+            self.noise.bfreq, self.noise.bamp, self.signal.bamp,
+            ret_angle=True, **ROT_PARS)
+        if th1==0 or th2==0:
+            print("th1={}, th2={}".format(th1, th2))
+            print("rotation failed for {}".format(self.signal.id))
+
+        self.noise.amp = ut.rotate_noise_full(
+            self.noise.freq, self.noise.amp, self.signal.amp,
+            th1=th1, th2=th2, **ROT_PARS)
+
+
+    def __calc_bsnr(self):
+        if ROTATE_NOISE and self.ROTATED == False:
+            self.ROTATED = True
+            self.__rotate_noise()
+        # set bsnr to the object
+        self.bsnr=self.signal.bamp/self.noise.bamp
+
+
     def __get_snr(self):
-        self.bsnr = self.signal.amp/self.noise.amp
+        self.__calc_bsnr()
         self.__find_bsnr_limits()
         self.__update_lims_to_meta()
         if self.test_shearer:
@@ -194,10 +286,10 @@ class SNP(object):
 
 
     def __shearer_test(self):
-        mns = np.zeros([len(self.SBANDS)])
-        for i,bws in enumerate(self.SBANDS):
+        mns = np.zeros(len(SBANDS))
+        for i, bws in enumerate(SBANDS):
             inds = np.where((self.signal.freq >=bws[0]) &
-                (self.signal.freq >=bws[0]))
+                (self.signal.freq < bws[1]))[0]
             mns[i] = np.mean(self.signal.amp[inds])/np.mean(self.noise.amp[inds])
 
         if np.any(mns < 3):
@@ -265,12 +357,15 @@ class SNP(object):
         signal-to-noise.
         """
 
-        blw = np.where(self.bsnr>=self.SNR_TOLERENCE)[0]
-        if blw.size <= self.MIN_POINTS:
+        blw = np.where(self.bsnr>=SNR_TOLERENCE)[0]
+        if blw.size <= MIN_POINTS:
             self.signal.set_pass_snr(False)
         else:
-            self.set_ubfreqs(self.find_optimal_signal_bandwidth(
-                self.signal.freq, self.bsnr, self.SNR_TOLERENCE))
+            if BW_METHOD==1:
+                self.set_ubfreqs(self.find_optimal_signal_bandwidth(
+                    self.signal.bfreq, self.bsnr, SNR_TOLERENCE))
+            if BW_METHOD==2:
+                self.set_ubfreqs(self.find_optimal_signal_bandwidth_2())
 
     def set_ubfreqs(self, ubfreqs):
         self.ubfreqs = ubfreqs
@@ -290,7 +385,7 @@ class SNP(object):
         fl = np.abs(inte-(1-pctl)).argmin()
 
         tryCount=0
-        while (fl > fh):
+        while (fl >= fh) or fl==0:
             inte[fl] = 1
             fl = np.abs(inte+1-pctl).argmin()
             tryCount += 1
@@ -303,6 +398,8 @@ class SNP(object):
         #     fl -= 2
 
         if not plot:
+            if fh-fl < 3:
+                self.signal.set_pass_snr(False)
             return np.array([freq[fl], freq[fh]])
         else:
             import matplotlib.pyplot as plt
@@ -318,6 +415,34 @@ class SNP(object):
             plt.legend()
             plt.ylabel("arb. units")
             plt.xlabel("freq [Hz]")
+
+    def find_optimal_signal_bandwidth_2(self, plot=False):
+        # get freq and ratio function
+        f = self.signal.bfreq; a = self.bsnr
+        # get index of freqs > peak bsnr  and < peak bsnr
+        indsgt = np.where(f>f[a==a.max()])
+        indslt = np.where(f<f[a==a.max()])
+        # get those freqs
+        fh = f[indsgt]; fl = f[indslt]
+
+        try:
+            ufl = fh[np.where(a[indsgt]-SNR_TOLERENCE<=0)[0]-1][0]
+            lfl = fl[np.where(a[indslt]-SNR_TOLERENCE<=0)[0]+1][-1]
+        except IndexError as msg:
+            print(msg)
+            print('-'*20)
+            print("Doesn't meet at one end")
+            self.signal.set_pass_snr(False)
+            return np.array([])
+
+        if not plot:
+            return np.array([lfl, ufl])
+        else:
+            plt.loglog(f, a, label=name)
+            plt.hlines(SNR_TOLERENCE, f.min(), f.max())
+            plt.vlines(f[a==a.max()], a.min(), a.max())
+            plt.vlines(fh[np.where(a[indsgt]-SNR_TOLERENCE<=0)[0]-1][0], a.min()*2, a.max()/2)
+            plt.vlines(fl[np.where(a[indslt]-SNR_TOLERENCE<=0)[0]+1][-1], a.min()*2, a.max()/2)
 
 
 
@@ -336,6 +461,7 @@ class SNP(object):
             self.signal.freq, self.noise.freq, self.noise.amp)
         self.noise.diff_freq = self.noise.freq[np.where(self.noise.freq <= self.signal.freq.min())]
         self.noise.freq = self.signal.freq.copy()
+        self.noise._Spectrum__bin_spectrum() # need to recalc bins after interp.
 
     def __str__(self):
         return 'SNP(id:{}, event:{})'.format(self.id, self.event)
@@ -344,7 +470,7 @@ class SNP(object):
         return 'SNP(id:' + self.id + ', event:' + self.event + ')'
 
 class Spectra(object):
-
+    global PLOT_COLUMNS
     """
     Higher order container class for a group of SNP objects from a single event.
     """
@@ -371,8 +497,8 @@ class Spectra(object):
         sig, noise = sig.copy(), noise.copy()
         snps=[]
         for s, n in zip(sig, noise):
-            snps.append(
-            SNP(Signal(s, **kwargs), Noise(n, **kwargs)))
+            print(f"Doing {s.id}")
+            snps.append(SNP(Signal(s, **kwargs), Noise(n, **kwargs)))
         return cls(snps)
 
     @staticmethod
@@ -442,9 +568,8 @@ class Spectra(object):
         return list(self.group.keys())
 
     def quick_vis(self, save=None, ret=True):
-        l = self.__len__()
-        l = int((l/2 + (l%2)/2)/2)
-        fig, axes = plt.subplots(l,l, figsize=(13,12))
+        l = self.__num_rows()
+        fig, axes = plt.subplots(l, PLOT_COLUMNS, figsize=(17, int(l*5)))
         axes = axes.flatten()
         for g, ax in zip(self.group.values(), axes):
             g.quick_vis(ax)
@@ -462,6 +587,14 @@ class Spectra(object):
 
     def __len__(self):
         return len(self.group)
+
+    def __num_rows(self):
+        l = self.__len__()
+        cols = PLOT_COLUMNS
+        if l % cols > 0:
+            return int((cols * (int(l/cols)+1)) / cols)
+        else:
+            return int(l/cols)
 
 
 # functions
