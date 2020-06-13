@@ -1,4 +1,4 @@
-## SpecMod - A Toolbox for Processing and Modeling Seismic Spectra
+## SpecMod - A Python-Based Toolbox for Processing and Modeling Seismic Spectra
 
 SpecMod was designed following closely the method of spectral modeling described in Edwards et al. (2010).
 
