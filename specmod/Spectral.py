@@ -12,24 +12,24 @@ from . import config as cfg
 # DEFAULT PARAMS
 
 SUPPORTED_SAVE_METHODS = ['pickle']
-MIN_MAX_FREQ_PCT = [10, 20]
 
 BW_METHOD=cfg.SPECTRAL["BW_METHOD"]
+
 PLOT_COLUMNS = cfg.SPECTRAL["PLOT_COLUMNS"]
-BINNING_PARAMS = dict(smin=cfg.SPECTRAL["BIN_PARS"][0],
-    smax=cfg.SPECTRAL["BIN_PARS"][1],
-    bins=cfg.SPECTRAL["BIN_PARS"][2])
+
+BINNING_PARAMS = cfg.SPECTRAL["BIN_PARS"]
+
 BIN = True
 
-ROTATE_NOISE = cfg.SPECTRAL["ROTATE"]
-
-ROT_PARS = dict(bcond=cfg.SPECTRAL["ROT_PARS"][0],
-    fcond=cfg.SPECTRAL["ROT_PARS"][1],
-    inc=cfg.SPECTRAL["ROT_PARS"][2])
+ROTATE_NOISE = cfg.SPECTRAL["ROTATE_NOISE"]
+ROT_METHOD = cfg.SPECTRAL["ROT_METHOD"]
+ROT_PARS = cfg.SPECTRAL['ROT_PARS']
 
 SNR_TOLERENCE = cfg.SPECTRAL["SNR_TOLERENCE"]
 MIN_POINTS = cfg.SPECTRAL["MIN_POINTS"]
 SBANDS = cfg.SPECTRAL["S_BANDS"]
+
+
 
 # classes
 class Spectrum(object):
@@ -54,7 +54,7 @@ class Spectrum(object):
             self.__set_metadata_from_trace(tr, kind)
             self.__calc_spectra(**kwargs)
             self.psd_to_amp()
-            self.__bin_spectrum()
+            self.__bin_spectrum(**BINNING_PARAMS)
 
 
 
@@ -133,8 +133,8 @@ class Spectrum(object):
                     nm.update({k:v})
         return nm
 
-    @staticmethod
-    def bin_spectrum(freq, amp, smin=0.001, smax=200, bins=51):
+
+    def __bin_spectrum(self, smin=0.001, smax=200, bins=101):
         # define the range of bins to use to average amplitudes and smooth spectrum
         space = np.logspace(np.log10(smin), np.log10(smax), bins)
         # initialise numpy arrays
@@ -142,17 +142,17 @@ class Spectrum(object):
         # iterate through bins to find mean log-amplitude and bin center (log space)
         for i, bbb in enumerate(zip(space[:-1], space[1:])):
             bb, bf = bbb
-            a = 10**np.log10(amp[(freq>=bb)&(freq<=bf)]).mean()
+            a = 10**np.log10(self.amp[(self.freq>=bb)&(self.freq<=bf)]).mean()
             bamps[i] = a;
             bfreqs[i] = 10**(np.mean([np.log10(bb), np.log10(bf)]))
 
         # remove nan values
-        bfreqs = bfreqs[np.logical_not(np.isnan(bamps))]; bamps = bamps[np.logical_not(np.isnan(bamps))]
-        return bfreqs, bamps
+        self.bfreq = bfreqs[np.logical_not(np.isnan(bamps))]
+        self.bamp = bamps[np.logical_not(np.isnan(bamps))]
+        self.BAMP = bamps
+        self.BFREQ = bfreqs
 
-    def __bin_spectrum(self):
-        self.bfreq, self.bamp = Spectrum.bin_spectrum(self.freq, self.amp,
-                                                        **BINNING_PARAMS)
+
 
 
 
@@ -257,16 +257,27 @@ class SNP(object):
 
 
     def __rotate_noise(self):
-        self.noise.bamp, th1, th2 = ut.rotate_noise_full(
-            self.noise.bfreq, self.noise.bamp, self.signal.bamp,
-            ret_angle=True, **ROT_PARS)
-        if th1==0 or th2==0:
-            print("th1={}, th2={}".format(th1, th2))
-            print("rotation failed for {}".format(self.signal.id))
+        if ROT_METHOD == 1:
+            self.noise.bamp, th1, th2 = ut.rotate_noise_full(
+                self.noise.bfreq, self.noise.bamp, self.signal.bamp,
+                ret_angle=True, **ROT_PARS)
+            if th1==0 or th2==0:
+                print("th1={}, th2={}".format(th1, th2))
+                print("rotation failed for {}".format(self.signal.id))
 
-        self.noise.amp = ut.rotate_noise_full(
-            self.noise.freq, self.noise.amp, self.signal.amp,
-            th1=th1, th2=th2, **ROT_PARS)
+            self.noise.amp = ut.rotate_noise_full(
+                self.noise.freq, self.noise.amp, self.signal.amp,
+                th1=th1, th2=th2, **ROT_PARS)
+
+        if ROT_METHOD == 2:
+
+            rot = ut.non_lin_boost_noise_func(self.noise.bfreq,
+                self.noise.bamp, self.signal.bamp, **ROT_PARS)
+
+            self.noise.bamp *= rot
+
+            self.noise.amp *= np.interp(self.noise.freq, self.noise.bfreq, rot)
+
 
 
     def __calc_bsnr(self):
@@ -292,10 +303,8 @@ class SNP(object):
                 (self.signal.freq < bws[1]))[0]
             mns[i] = np.mean(self.signal.amp[inds])/np.mean(self.noise.amp[inds])
 
-        if np.any(mns < 3):
+        if np.any(mns < SNR_TOLERENCE):
             self.signal.set_pass_snr(False)
-        else:
-            self.signal.set_pass_snr(True)
 
 
     def __update_lims_to_meta(self):
@@ -432,7 +441,7 @@ class SNP(object):
             print(msg)
             print('-'*20)
             print("Doesn't meet at one end")
-            self.signal.set_pass_snr(False)
+            self.signal.pass_snr = False
             return np.array([])
 
         if not plot:
@@ -459,9 +468,9 @@ class SNP(object):
     def __interp_noise_to_signal(self):
         self.noise.amp = np.interp(
             self.signal.freq, self.noise.freq, self.noise.amp)
-        self.noise.diff_freq = self.noise.freq[np.where(self.noise.freq <= self.signal.freq.min())]
+        #self.noise.diff_freq = self.noise.freq[np.where(self.noise.freq <= self.signal.freq.min())]
         self.noise.freq = self.signal.freq.copy()
-        self.noise._Spectrum__bin_spectrum() # need to recalc bins after interp.
+        self.noise._Spectrum__bin_spectrum(**BINNING_PARAMS) # need to recalc bins after interp.
 
     def __str__(self):
         return 'SNP(id:{}, event:{})'.format(self.id, self.event)
@@ -575,7 +584,11 @@ class Spectra(object):
             g.quick_vis(ax)
         fig.tight_layout()
         if save is not None:
-            fig.savefig(os.path.join("Figures", save))
+            assert type(save) is str
+            fig.savefig(save)
+            fig.clear()
+            plt.close(fig)
+            print(f"deleted spec fig")
         if ret:
             return fig, axes
 

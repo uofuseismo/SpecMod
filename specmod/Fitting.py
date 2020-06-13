@@ -248,7 +248,7 @@ class FitSpectra(object):
                 print('WARNING: {} not in available channels.'.format(
                     name.upper()))
 
-    def quick_vis(self):
+    def quick_vis(self, save=None):
         l = self.__num_rows()
         fig, axes = plt.subplots(l, PLOT_COLUMNS, figsize=(17, int(l*5)))
         axes = axes.flatten()
@@ -258,6 +258,11 @@ class FitSpectra(object):
             else:
                 ax = mod.quick_vis(ax)
 
+        if save is not None:
+            if type(save) is str:
+                fig.savefig(save)
+            else:
+                raise ValueError("Must provide valid path as str.")
 
     @staticmethod
     def create_simple_guess(spectra):
