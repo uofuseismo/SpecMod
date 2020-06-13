@@ -9,7 +9,7 @@ from mtspec import mtspec
 from . import utils as ut
 from . import config as cfg
 
-# DEFAULT PARAMS
+# VARIABLES READ FROM CONFIG
 
 SUPPORTED_SAVE_METHODS = ['pickle']
 
@@ -27,6 +27,8 @@ ROT_PARS = cfg.SPECTRAL['ROT_PARS']
 
 SNR_TOLERENCE = cfg.SPECTRAL["SNR_TOLERENCE"]
 MIN_POINTS = cfg.SPECTRAL["MIN_POINTS"]
+
+ASSERT_BANDWIDTHS = cfg.SPECTRAL["ASSERT_BANDWIDTHS"]
 SBANDS = cfg.SPECTRAL["S_BANDS"]
 
 
@@ -212,12 +214,12 @@ class SNP(object):
     itrpn = True
     ROTATED = False
 
-    def __init__(self, signal, noise, interpolate_noise=True, shearer_test=True):
+    def __init__(self, signal, noise, interpolate_noise=True):
         self.__check_ids(signal, noise)
         self.signal = signal
         self.noise = noise
         self.pair = (self.signal, self.noise)
-        self.__set_metadata(interpolate_noise, shearer_test)
+        self.__set_metadata(interpolate_noise)
         if self.intrp:
             self.__interp_noise_to_signal()
         self.__get_snr()
@@ -292,11 +294,11 @@ class SNP(object):
         self.__calc_bsnr()
         self.__find_bsnr_limits()
         self.__update_lims_to_meta()
-        if self.test_shearer:
-            self.__shearer_test()
+        if ASSERT_BANDWIDTHS:
+            self.____assert_bandwidths_test()
 
 
-    def __shearer_test(self):
+    def __assert_bandwidths_test(self):
         mns = np.zeros(len(SBANDS))
         for i, bws in enumerate(SBANDS):
             inds = np.where((self.signal.freq >=bws[0]) &
