@@ -264,23 +264,6 @@ class FitSpectra(object):
             else:
                 raise ValueError("Must provide valid path as str.")
 
-    @staticmethod
-    def create_simple_guess(spectra):
-        guess = {}
-        for ID, spec in spectra.group.items():
-            try:
-                inds = np.where((spec.signal.freq>=spec.signal.ubfreqs[0]) & (
-                     spec.signal.freq<=spec.signal.ubfreqs[1]))
-                # print(ID, inds)
-                llpsp = np.log10(spec.signal.amp[inds].max())
-                fc = spec.signal.freq[inds][spec.signal.amp[inds].argmax()]
-                guess.update({ ID : {'llpsp':llpsp, 'fc': fc, 'ts': 0.01}})
-
-            except IndexError:
-                guess.update({ID: {'llpsp':None, 'fc': None, 'ts': None}})
-
-        return guess
-
 
     @staticmethod
     def write_flatfile(path, fits):

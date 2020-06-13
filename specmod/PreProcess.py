@@ -125,7 +125,14 @@ def get_sta_shift(sta, sta_shift):
 def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
     """
     Function to cut a p wave window from an Obspy trace obeject
+
+    bf (int/float) time shift in seconds before the P-wave arrival time
+
+    raf (int/float) ratio of p-s time to fix the end of the P-window
+
+    sta_shift (dict) dictionary of station names and station specific time shifts in seconds
     """
+
     stas=0
 
     for tr in st:
@@ -138,9 +145,26 @@ def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
         link_window_to_trace(tr, p_start, p_end)
         tr.trim(p_start, p_end)
 
-def cut_s(st, bf=2, raf=0.8, tafp=20, sta_shift=dict()):
+
+def cut_s(st, bf=2, rafp=0.8, tafs=20, time_after='absolute_time', sta_shift=dict()):
     """
-    Function to cut a p wave window from an Obspy trace obeject
+    Function to cut a s wave window from an Obspy trace obeject.
+
+    bf (int/float) time shift in seconds before the P-wave arrival time
+
+    rafp (int/float) ratio of p-s time to fix the start the of S-window
+
+    tafs (int/float) window length in seconds or scaling factor of relative p-s time
+
+    time_after (str) can be set to 'absolute_time' or 'relative_ps'
+
+        if time_after == 'absolute_time' the window length is given as a value in seconds
+
+        if time_after == 'relative_ps' the value should be some number that scales with the p-s differential time
+
+    sta_shift (dict) dictionary of station names and station specific time shifts in seconds
+
+    Modified by Pungky Suroyo.
     """
     stas=0
 
@@ -148,11 +172,62 @@ def cut_s(st, bf=2, raf=0.8, tafp=20, sta_shift=dict()):
 
         stas = get_sta_shift(tr.stats.station, sta_shift)
         relps = tr.stats['s_time'] - tr.stats['p_time']
-        p_end = tr.stats['p_time'] + relps*raf + stas
-        s_end = p_end + tafp
+        p_end = tr.stats['p_time'] + relps*rafp + stas
+
+        if time_after == 'absolute_time':
+            s_end = p_end + tafs
+
+        if time_after == 'relative_ps':
+            s_end = p_end + tafs*relps
+
+        if s_end > tr.stats['endtime']:
+            s_end= tr.stats['endtime']
 
         link_window_to_trace(tr, p_end, s_end)
         tr.trim(p_end, s_end)
+
+def pad_traces(st, pad_len=1, pad_val=0):
+
+    """
+    Util to pad waveforms with zeros before and after the start and endtime of trace.
+    """
+
+    for tr in st:
+        tr.trim(tr.stats.starttime-pad_len, tr.stats.endtime+pad_len, pad=True, fill_value=pad_val)
+
+
+
+def cut_c(st, bf=2, raf=0.8, tafp=1.4, sta_shift=dict()):
+
+    """
+
+    Function to cut a coda wave window from an Obspy trace object
+
+    Written by Pungky Suroyo.
+
+    """
+
+    stas=0
+
+    for tr in st:
+
+        stas = get_sta_shift(tr.stats.station, sta_shift)
+
+        relps = tr.stats['s_time'] - tr.stats['p_time']
+
+        s_start = tr.stats['p_time'] + relps*raf + stas
+
+        c_start = tafp*relps + s_start
+
+        c_end =tr.stats['endtime']
+
+        link_window_to_trace(tr, c_start, c_end)
+
+        tr.trim(c_start, c_end)
+
+
+def arais_duration(low_lim=5, up_lim=95):
+    pass
 
 def get_signal(st, func, **kwargs):
     stc = st.copy()

@@ -12,12 +12,16 @@ SPECTRAL = dict(
     ## minimum number of points above SNR to pass
     MIN_POINTS = 10,
 
-    ASSERT_BANDWIDTHS = True,
+    ASSERT_BANDWIDTHS = False,
     ## bands to evaluate SNR (like Shearer)
     S_BANDS = [(2, 4), (4, 6), (6, 8)],
 
 
     ### SNR METHOD
+
+    # if noise is shorter than signal - scale with np.sqrt(len(signal)/len(noise))
+    SCALE_PARSEVAL = True,
+
     # BW_METHOD = 1,
     BW_METHOD = 2,
 

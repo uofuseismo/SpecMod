@@ -21,6 +21,8 @@ BINNING_PARAMS = cfg.SPECTRAL["BIN_PARS"]
 
 BIN = True
 
+SCALE_PARSEVAL = cfg.SPECTRAL["SCALE_PARSEVAL"]
+
 ROTATE_NOISE = cfg.SPECTRAL["ROTATE_NOISE"]
 ROT_METHOD = cfg.SPECTRAL["ROT_METHOD"]
 ROT_PARS = cfg.SPECTRAL['ROT_PARS']
@@ -220,6 +222,8 @@ class SNP(object):
         self.noise = noise
         self.pair = (self.signal, self.noise)
         self.__set_metadata(interpolate_noise)
+        if SCALE_PARSEVAL:
+            self.__scale_noise_parseval()
         if self.intrp:
             self.__interp_noise_to_signal()
         self.__get_snr()
@@ -257,6 +261,10 @@ class SNP(object):
         # assert type(arr) is type(np.array())
         self._bsnr = arr
 
+
+    def __scale_noise_parseval(self):
+        self.noise.amp *= np.sqrt(len(self.signal.amp)/len(self.noise.amp))
+        self.noise.bamp *= np.sqrt(len(self.signal.amp)/len(self.noise.amp))
 
     def __rotate_noise(self):
         if ROT_METHOD == 1:

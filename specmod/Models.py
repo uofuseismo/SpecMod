@@ -44,9 +44,13 @@ def source(f, llpsp, fc):
     loga = llpsp - (1/gam)*np.log10((1+(f/fc)**(gam*n)))
     return loga
 
-# t-star attenuation model
-def atten(f, ts):
+# freq independent t-star attenuation model
+def t_star(f, ts):
     return -(np.pi*f*ts / np.log(10))
+
+# freq dependent t-star attenuation
+def t_star_freq(f, ts, a):
+    return -(np.pi*(f**(1-a))*ts / np.log(10))
 
 # combine models
 def simple_model(f, llpsp, fc, ts):
@@ -54,4 +58,10 @@ def simple_model(f, llpsp, fc, ts):
     """
     Simple attenuated source model to minimise.
     """
-    return source(f, llpsp, fc) + atten(f, ts) + scale_to_motion(MOTION, f)
+    return source(f, llpsp, fc) + t_star(f, ts) + scale_to_motion(MOTION, f)
+
+def simple_model_fdep(f, llpsp, fc, ts, a):
+    """
+    Simple model but with frequency dependent attenuation.
+    """
+    return source(f, llpsp, fc) + t_star_freq(f, ts, a) + scale_to_motion(MOTION, f)
