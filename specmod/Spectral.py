@@ -295,7 +295,7 @@ class SNP(object):
         self.__find_bsnr_limits()
         self.__update_lims_to_meta()
         if ASSERT_BANDWIDTHS:
-            self.____assert_bandwidths_test()
+            self.__assert_bandwidths_test()
 
 
     def __assert_bandwidths_test(self):
