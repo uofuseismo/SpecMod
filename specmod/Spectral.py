@@ -352,14 +352,12 @@ class SNP(object):
         # if ret:
         #     return ax
 
-    def __set_metadata(self, intrp, test_s):
+    def __set_metadata(self, intrp):
         # global setting
         self.intrp = intrp
         # exposing these attributes to the highest level *lazyprogrammer*
         self.event = self.signal.event
         self.id = self.signal.id
-        self.test_shearer = test_s
-
 
 
     def __find_bsnr_limits(self):

@@ -11,6 +11,8 @@ SPECTRAL = dict(
     SNR_TOLERENCE = 3,
     ## minimum number of points above SNR to pass
     MIN_POINTS = 10,
+
+    ASSERT_BANDWIDTHS = True,
     ## bands to evaluate SNR (like Shearer)
     S_BANDS = [(2, 4), (4, 6), (6, 8)],
 
