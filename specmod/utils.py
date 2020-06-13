@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.rcParams['ps.fonttype'] = 42
 matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['svg.fonttype'] = 'none'
 from matplotlib.dates import num2date
 import numpy as np
 import pandas as pd
@@ -107,7 +108,11 @@ def plot_traces(st, plot_theoreticals=False, plot_windows=False, conv=1e-9,
     fig.suptitle(str(st[0].stats.otime))
     fig.tight_layout()
     if save is not None:
-        fig.savefig(os.path.join("Figures",save))
+        assert type(save) is str
+        fig.savefig(save)
+        fig.clear()
+        plt.close(fig)
+        print(f"deleted td fig")
 
 def stream_distance_sort(st, dist_met='repi'):
     """
@@ -258,6 +263,63 @@ def find_rotation_angle(arr_from_x, arr_from_y, arr_to, cond=-1, inc=0.01, backw
         th -= inc
     return th
 
+
+def find_rotation_angle_v2(arr_from_x, arr_from_y, arr_to, inc=0.01, backwards=False):
+
+    """
+    Find the rotation angle required to raise one amplitude on a given array to the same
+    amplitude on a target array. This angle may be used to rotate the entire array.
+    The code increases (or decreases if backwards) the angle iteratively until the amplitude is
+    higer than or equal to the target amplitude.
+    """
+
+    max_its=5000; its=0
+    th=0;
+
+    cent = np.sum((10**arr_from_x)*(10**arr_from_y)) / np.sum(10**arr_from_y)
+
+    print(f"centroid f @ {cent:.3f} Hz")
+
+    if backwards:
+        inds = 10**arr_from_x < cent
+    else:
+        inds = 10**arr_from_x > cent
+
+    # They might already meet at one end, don't have to rotate.
+    if np.any(10**arr_to[inds] <= 10**arr_from_y[inds]):
+        print('already same level')
+        return 0
+
+    tmp_from = arr_from_y.copy()
+
+    while True:
+        tmp_from = arr_from_x * np.sin(th) + arr_from_y * np.cos(th) + arr_from_y[0]*th
+        # if its % 500 == 0 or its==0 or its==5000:
+        #     plt.figure()
+        #     plt.title(f"iteration # {its}")
+        #     plt.plot(arr_from_x, tmp_from, 'b--', arr_from_x, arr_to, 'k')
+        #     plt.show()
+        #     input("Hi, I'm stopped")
+        #     plt.close()
+        if backwards:
+            th-=inc
+        else:
+            th+=inc
+        its+=1
+
+        if np.any(10**tmp_from[inds] >= 10**arr_to[inds]):
+            break
+
+        if its > max_its:
+            print("Didn't ever meet.")
+            return 0
+
+    if backwards:
+        th += inc
+    else:
+        th -= inc
+    return th
+
 def rotate(x, y, theta):
     """
     Rotate an array through a given angle (in radians).
@@ -270,19 +332,63 @@ def rotate(x, y, theta):
 def rotate_noise_full(xn, yn, ys, bcond=0, fcond=-1, inc=0.05, ret_angle=False, th1=None, th2=None):
     """
     Performs a forward and backward rotation to match low and high frequencies.
-    The output array is the input rotated forward and backwards and added
+    The output array is the input rotated forward and backwards and spliced
     together.
     """
 
     xn = np.log10(xn); yn=np.log10(yn); ys=np.log10(ys)
     if th1 is None and th2 is None:
-        th1=find_rotation_angle(xn, yn, ys, cond=bcond, backwards=True, inc=inc)
-        th2=find_rotation_angle(xn, yn, ys, cond=fcond, inc=inc)
+        # th1=find_rotation_angle(xn, yn, ys, cond=bcond, backwards=True, inc=inc)
+        # th2=find_rotation_angle(xn, yn, ys, cond=fcond, inc=inc)
+        th1=find_rotation_angle_v2(xn, yn, ys, backwards=True, inc=inc)
+        th2=find_rotation_angle_v2(xn, yn, ys, inc=inc)
     #print(th1, th2)
     yr1 = rotate(xn, yn, th1)
     yr2 = rotate(xn, yn, th2)
 
     if ret_angle:
-        return 10**yr2+10**yr1, th1, th2
+        return np.maximum(10**yr1, 10**yr2), th1, th2
     else:
-        return 10**yr2+10**yr1
+        return np.maximum(10**yr1, 10**yr2)
+
+
+
+def get_centroid_freq(f, a):
+    # Calc the center freq of spectrum
+    return np.sum(f*a) / np.sum(a)
+
+
+def non_lin_boost_noise_func(xn, yn, ys, inc, space):
+
+    nb = 0; max_its = 1000; it=0;
+    # determin low and high freqs with respect to centroid freq
+    inds_b = xn <= get_centroid_freq(xn, ys) # indices of 'low' freqs
+    inds_f = ~inds_b # indices of 'high' freqs
+
+    sample_no = np.interp(xn, [xn.min(), xn.max()], space)
+    # 'rotate' the low frequencies to signal
+    while it < max_its:
+
+        tmp_n_b = yn / sample_no ** nb
+
+        nb += inc
+        it += 1
+        # break condition looks for any low freq that is greater than signal
+        if np.any(tmp_n_b[inds_b] >= ys[inds_b]):
+            break
+
+
+    sample_no_f = sample_no[::-1]
+    nf = 0; max_its = 1000; it=0;
+
+    while it < max_its:
+
+        tmp_n_f = yn / sample_no_f ** nf
+
+        nf += inc
+        it += 1
+
+        if np.any(tmp_n_f[inds_f] >= ys[inds_f]):
+            break
+
+    return np.maximum(tmp_n_b, tmp_n_f) / yn
