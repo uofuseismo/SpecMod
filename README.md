@@ -1,15 +1,16 @@
 ## SpecMod - A Python-Based Toolbox for Processing and Modeling Seismic Spectra
 
-SpecMod was designed following closely the method of spectral modeling described in Edwards et al. (2010).
+SpecMod was designed following method of spectral modeling described in Edwards et al. (2010).
 
 Benjamin Edwards, Bettina Allmann, Donat Fäh, John Clinton, Automatic computation of moment magnitudes for small earthquakes and the scaling of local to moment magnitude, Geophysical Journal International, Volume 183, Issue 1, October 2010, Pages 407–420, https://doi.org/10.1111/j.1365-246X.2010.04743.x
 
 
-SpecMod is very much still in development and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing/modeling spectra.
+SpecMod is still in development and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing/modeling spectra. Is is possible the code will
+go through major redesigns in later versions, so this is more of a concept library. Be warned!
 
 ## Usage Instructions
 
-This code currently has a good number of dependencies and is written for python 3.7.
+This code is written in python 3.7 but should be usable in versions 3.7+.
 
 Crucial dependencies:
 
@@ -24,10 +25,7 @@ My suggestion is that you should use anaconda/miniconda create a new conda envir
 
  $ conda create -n SpecMod python=3.7
 
-Then install all dependencies listed in the requirements.txt file.
-MAKE SURE YOU POINT TO THE CORRECT FILE! It is under the SpecMod directory.
+Then install all dependencies listed above. Conda should install the sub-dependencies for you.
+Theoretically, the code should work with the latest versions of these software.
+If there is an issue please create a pull request with the versions of the above software you are using.
 
- $ conda install -c conda-forge  --file requirements.txt
-
-Anaconda will install all of the relevant dependencies. If this step fails, try
-to just install 1-4(or 5) and anaconda should be able to manage all of the sub-dependencies.
