@@ -17,7 +17,7 @@ ipython==7.11.1
 jedi==0.15.2
 kiwisolver==1.1.0
 lmfit==1.0.0
-lxml==4.4.2
+lxml==4.6.2
 matplotlib==3.1.2
 mpi4py==3.0.3
 mtspec==0.3.2
