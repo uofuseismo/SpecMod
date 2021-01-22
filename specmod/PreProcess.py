@@ -1,8 +1,9 @@
 import os
 import glob
 import obspy
-import matplotlib.pyplot as plt
+import scipy
 import numpy as np
+import matplotlib.pyplot as plt
 from . import utils as ut
 
 
@@ -122,7 +123,7 @@ def get_sta_shift(sta, sta_shift):
     else:
         return 0
 
-def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
+def cut_p(st, bf=0, tafp=0.8, time_after='relative_time', sta_shift=dict(), refine_window=False):
     """
     Function to cut a p wave window from an Obspy trace obeject
 
@@ -131,6 +132,9 @@ def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
     raf (int/float) ratio of p-s time to fix the end of the P-window
 
     sta_shift (dict) dictionary of station names and station specific time shifts in seconds
+
+    refine_window (bool) True if you want to use squared intergral percentiles to refine
+    the signal window.
     """
 
     stas=0
@@ -138,15 +142,38 @@ def cut_p(st, bf=2, raf=0.8, sta_shift=dict()):
     for tr in st:
 
         stas = get_sta_shift(tr.stats.station, sta_shift)
-        relps = tr.stats['s_time'] - tr.stats['p_time']
-        p_start = tr.stats['p_time']-bf+stas
-        p_end = tr.stats['p_time']+relps*raf
 
-        link_window_to_trace(tr, p_start, p_end)
+        relps = tr.stats['s_time'] - tr.stats['p_time']
+
+        p_start = tr.stats['p_time']-bf+stas
+
+        if time_after == 'absolute_time':
+            p_end = p_start + tafp
+
+        if time_after == 'relative_time':
+            p_end = p_start + tafp*relps
+
+        if p_end > tr.stats['endtime']:
+            p_end = tr.stats['endtime']
+
+
         tr.trim(p_start, p_end)
 
 
-def cut_s(st, bf=2, rafp=0.8, tafs=20, time_after='absolute_time', sta_shift=dict()):
+        if refine_window:
+            rw_start, rw_end = signal_intensity(tr)
+
+            p_start = p_start + rw_start
+            p_end = p_start + rw_end
+
+            tr.trim(p_start, p_end)
+
+        link_window_to_trace(tr, p_start, p_end)
+
+
+
+
+def cut_s(st, bf=2, rafp=0.8, tafs=20, time_after='absolute_time', sta_shift=dict(), refine_window=True):
     """
     Function to cut a s wave window from an Obspy trace obeject.
 
@@ -180,11 +207,42 @@ def cut_s(st, bf=2, rafp=0.8, tafs=20, time_after='absolute_time', sta_shift=dic
         if time_after == 'relative_ps':
             s_end = p_end + tafs*relps
 
+
         if s_end > tr.stats['endtime']:
-            s_end= tr.stats['endtime']
+            s_end = tr.stats['endtime']
+
+
+        tr.trim(p_end, s_end)
+
+        if refine_window:
+            rw_start, rw_end = signal_intensity(tr)
+
+            s_end = p_end + rw_end
+            p_end = p_end + rw_start
+
+            tr.trim(p_end, s_end)
 
         link_window_to_trace(tr, p_end, s_end)
-        tr.trim(p_end, s_end)
+
+def signal_intensity(tr, pctls=[1, 99], plot=False):
+    delta = tr.stats.delta
+    data = tr.data
+
+    inte = normalise(scipy.integrate.cumtrapz(data**2))*100
+
+
+    w_start = np.abs(inte-pctls[0]).argmin()*delta
+    w_end = np.abs(inte-pctls[1]).argmin()*delta
+
+    if plot:
+        plt.plot(np.arange(0, len(data))*delta, normalise(data)*100, color='grey')
+        plt.plot((np.arange(0, len(data))*delta)[:-1], inte, 'k--')
+        plt.vlines(w_start, 0, 100, color='red')
+        plt.vlines(w_end, 0, 100, color='red')
+        plt.xlim(0, w_end*1.1)
+
+    return w_start, w_end
+
 
 def pad_traces(st, pad_len=1, pad_val=0):
 
@@ -219,35 +277,45 @@ def cut_c(st, bf=2, raf=0.8, tafp=1.4, sta_shift=dict()):
 
         c_start = tafp*relps + s_start
 
-        c_end =tr.stats['endtime']
+        c_end = tr.stats['endtime']
 
         link_window_to_trace(tr, c_start, c_end)
 
         tr.trim(c_start, c_end)
 
+def normalise(x, space=[0, 1]):
 
-def arais_duration(low_lim=5, up_lim=95):
-    pass
+    return np.interp(x, [x.min(), x.max()], space)
 
 def get_signal(st, func, **kwargs):
     stc = st.copy()
     func(stc, **kwargs)
     return stc
 
-def get_noise_p(st, sig, bf=1, bshift=0.2):
+def get_noise_p(st, sig, bshift=0.2):
     stc=st.copy()
     for tr, trs in zip(stc, sig):
-        end = trs.stats['wstart']-bshift
-        start = end - bf
+
+        end = tr.stats['p_time']-bshift
+
+
+        start = end  - (trs.stats['wend'] - trs.stats['wstart'])
+
+
         link_window_to_trace(tr, start, end)
+
         tr.trim(start, end)
     return stc
 
-def get_noise_s(st, bf=1, bshift=0.2):
+def get_noise_s(st, bf=1, bshift=0.2, sig=None):
     stc=st.copy()
-    for tr in stc:
+    for i, tr in enumerate(stc):
         end = tr.stats['p_time']-bshift
-        start = end - bf
+
+        if sig is not None: # get the same length as the signal window
+            start = end  - (sig[i].stats['wend'] - sig[i].stats['wstart'])
+        else:
+            start = end - bf
         link_window_to_trace(tr, start, end)
         tr.trim(start, end)
     return stc
