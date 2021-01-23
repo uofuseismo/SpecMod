@@ -26,6 +26,5 @@ My suggestion is that you should use anaconda/miniconda create a new conda envir
  $ conda create -n SpecMod python=3.7
 
 Then install all dependencies listed above. Conda should install the sub-dependencies for you.
-Theoretically, the code should work with the latest versions of these software.
-If there is an issue please create a pull request with the versions of the above software you are using.
-
+Theoretically, the code should work with the latest versions of the dependencies, unless they made a big change.
+If there is an issue please create an issue and mention the versions of the listed modules you are using.
