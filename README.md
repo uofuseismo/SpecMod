@@ -5,7 +5,7 @@ SpecMod was designed following method of spectral modeling described in Edwards 
 Benjamin Edwards, Bettina Allmann, Donat Fäh, John Clinton, Automatic computation of moment magnitudes for small earthquakes and the scaling of local to moment magnitude, Geophysical Journal International, Volume 183, Issue 1, October 2010, Pages 407–420, https://doi.org/10.1111/j.1365-246X.2010.04743.x
 
 
-SpecMod is still in development and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing/modeling spectra. It is possible the code will
+SpecMod is still an early protype and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing/modeling spectra. It is possible the code will
 go through major redesigns in later versions, so this is more of a concept library. 
 
 ## Usage Instructions
