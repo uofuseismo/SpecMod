@@ -6,7 +6,7 @@ Benjamin Edwards, Bettina Allmann, Donat Fäh, John Clinton, Automatic computati
 
 
 SpecMod is still in development and, as such, contains bugs which may introduce inaccuracies into spectral modeling. Therefore, it should be used with caution and not without a basic understanding of processing/modeling spectra. It is possible the code will
-go through major redesigns in later versions, so this is more of a concept library. Be warned!
+go through major redesigns in later versions, so this is more of a concept library. 
 
 ## Usage Instructions
 
