@@ -248,7 +248,7 @@ class FitSpectra(object):
                 print('WARNING: {} not in available channels.'.format(
                     name.upper()))
 
-    def quick_vis(self):
+    def quick_vis(self, save=None):
         l = self.__num_rows()
         fig, axes = plt.subplots(l, PLOT_COLUMNS, figsize=(17, int(l*5)))
         axes = axes.flatten()
@@ -258,23 +258,11 @@ class FitSpectra(object):
             else:
                 ax = mod.quick_vis(ax)
 
-
-    @staticmethod
-    def create_simple_guess(spectra):
-        guess = {}
-        for ID, spec in spectra.group.items():
-            try:
-                inds = np.where((spec.signal.freq>=spec.signal.ubfreqs[0]) & (
-                     spec.signal.freq<=spec.signal.ubfreqs[1]))
-                # print(ID, inds)
-                llpsp = np.log10(spec.signal.amp[inds].max())
-                fc = spec.signal.freq[inds][spec.signal.amp[inds].argmax()]
-                guess.update({ ID : {'llpsp':llpsp, 'fc': fc, 'ts': 0.01}})
-
-            except IndexError:
-                guess.update({ID: {'llpsp':None, 'fc': None, 'ts': None}})
-
-        return guess
+        if save is not None:
+            if type(save) is str:
+                fig.savefig(save)
+            else:
+                raise ValueError("Must provide valid path as str.")
 
 
     @staticmethod
