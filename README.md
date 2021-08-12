@@ -10,7 +10,7 @@ go through major redesigns in later versions, so this is a concept module.
 
 ## Usage Instructions
 
-This code is written for python 3.7 but is usable in versions 3.6, 3.7 and 3.8.
+This code is written for python 3.7 but is usable in versions 3.6, 3.7, and 3.8.
 
 Crucial dependencies:
 
